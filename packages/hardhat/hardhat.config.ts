@@ -51,28 +51,20 @@ const config: HardhatUserConfig = {
         enabled: process.env.MAINNET_FORKING_ENABLED === "true",
       },
     },
-    monadDevnet: {
-      url: process.env.MONAD_RPC_URL,
+    monadTestnet: {
+      url: "https://testnet-rpc.monad.xyz",
       accounts: [deployerPrivateKey],
-      chainId: Number(process.env.MONAD_CHAIN_ID),
+      chainId: 10143,
     },
   },
   // configuration for harhdat-verify plugin
   etherscan: {
-    apiKey: `DUMMY_VALUE_FOR_BLOCKSCOUT`,
-    customChains: [
-      {
-        network: "monadDevnet",
-        chainId: 41454,
-        urls: {
-          browserURL: process.env.MONAD_EXPLORER_URL ?? "",
-          apiURL: process.env.MONAD_EXPLORER_URL ? `${process.env.MONAD_EXPLORER_URL}/api` : "",
-        },
-      },
-    ],
+    enabled: false,
   },
   sourcify: {
-    enabled: false,
+    enabled: true,
+    apiUrl: "https://sourcify-api-monad.blockvision.org",
+    browserUrl: "https://testnet.monadexplorer.com/",
   },
 };
 
