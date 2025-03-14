@@ -1,28 +1,64 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
-import { YourContract } from "../typechain-types";
+import { DailyGM } from "../typechain-types";
+import { time } from "@nomicfoundation/hardhat-network-helpers";
 
-describe("YourContract", function () {
+describe("DailyGM", function () {
   // We define a fixture to reuse the same setup in every test.
+  let dailyGM: DailyGM;
+  let user1: any;
+  let user2: any;
 
-  let yourContract: YourContract;
   before(async () => {
-    const [owner] = await ethers.getSigners();
-    const yourContractFactory = await ethers.getContractFactory("YourContract");
-    yourContract = (await yourContractFactory.deploy(owner.address)) as YourContract;
-    await yourContract.waitForDeployment();
+    [user1, user2] = await ethers.getSigners();
+    const dailyGMFactory = await ethers.getContractFactory("DailyGM");
+    dailyGM = (await dailyGMFactory.deploy()) as DailyGM;
+    await dailyGM.waitForDeployment();
   });
 
   describe("Deployment", function () {
-    it("Should have the right message on deploy", async function () {
-      expect(await yourContract.greeting()).to.equal("Building Unstoppable Apps!!!");
+    it("Should initialize with empty lastGM values", async function () {
+      expect(await dailyGM.lastGM(user1.address)).to.equal(0);
+    });
+  });
+
+  describe("GM Functionality", function () {
+    it("Should allow a user to say GM", async function () {
+      await expect(dailyGM.connect(user1).gm()).to.emit(dailyGM, "GM").withArgs(user1.address, ethers.ZeroAddress);
+
+      // Should have updated lastGM timestamp
+      expect(await dailyGM.lastGM(user1.address)).to.be.gt(0);
     });
 
-    it("Should allow setting a new message", async function () {
-      const newGreeting = "Learn Scaffold-ETH 2! :)";
+    it("Should not allow a user to say GM twice in one day", async function () {
+      // Try to say GM again
+      await expect(dailyGM.connect(user1).gm()).to.be.reverted;
+    });
 
-      await yourContract.setGreeting(newGreeting);
-      expect(await yourContract.greeting()).to.equal(newGreeting);
+    it("Should allow a user to say GM after 24 hours", async function () {
+      // Fast forward time by 24 hours + 1 second
+      await time.increase(24 * 60 * 60 + 1);
+
+      // Should now be able to say GM again
+      await expect(dailyGM.connect(user1).gm()).to.emit(dailyGM, "GM").withArgs(user1.address, ethers.ZeroAddress);
+    });
+  });
+
+  describe("GM To Functionality", function () {
+    it("Should allow a user to say GM to another user", async function () {
+      // Fast forward time for user1
+      await time.increase(24 * 60 * 60 + 1);
+
+      await expect(dailyGM.connect(user1).gmTo(user2.address))
+        .to.emit(dailyGM, "GM")
+        .withArgs(user1.address, user2.address);
+    });
+
+    it("Should not allow a user to say GM to themselves", async function () {
+      // Fast forward time
+      await time.increase(24 * 60 * 60 + 1);
+
+      await expect(dailyGM.connect(user1).gmTo(user1.address)).to.be.reverted;
     });
   });
 });
