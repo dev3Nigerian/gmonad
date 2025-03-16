@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import axios from "axios";
+import { createPortal } from "react-dom";
 import { FaDiscord, FaTwitter } from "react-icons/fa";
 import { useAccount } from "wagmi";
 import { UserCircleIcon, XMarkIcon } from "@heroicons/react/24/outline";
@@ -25,6 +26,27 @@ const GMProfile = () => {
   const [username, setUsername] = useState("");
   const [bio, setBio] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
+
+  // Handle client-side rendering for the portal
+  useEffect(() => {
+    setIsMounted(true);
+    return () => setIsMounted(false);
+  }, []);
+
+  // Create a portal container when needed
+  useEffect(() => {
+    // When modal is opened, prevent body scrolling
+    if (isProfileOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [isProfileOpen]);
 
   // Fetch user profile from MongoDB
   useEffect(() => {
@@ -111,67 +133,105 @@ const GMProfile = () => {
     }
   };
 
-  const renderProfileForm = () => (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4">
-      <div className="bg-base-100 rounded-xl shadow-xl p-6 max-w-md w-full">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold">Edit Profile</h2>
-          <button className="btn btn-sm btn-circle" onClick={() => setIsProfileOpen(false)}>
-            <XMarkIcon width={20} height={20} />
-          </button>
+  const renderProfileModal = () => {
+    return (
+      <div className="modal-backdrop">
+        <div className="modal-container">
+          <div className="modal-content">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold">Edit Profile</h2>
+              <button className="btn btn-sm btn-circle" onClick={() => setIsProfileOpen(false)}>
+                <XMarkIcon width={20} height={20} />
+              </button>
+            </div>
+
+            <div className="form-control">
+              <label className="label">
+                <span className="label-text">Username *</span>
+              </label>
+              <input
+                type="text"
+                className="input input-bordered"
+                placeholder="Your username"
+                value={username}
+                onChange={e => setUsername(e.target.value)}
+              />
+            </div>
+
+            <div className="form-control mt-4">
+              <label className="label">
+                <span className="label-text">Bio</span>
+              </label>
+              <textarea
+                className="textarea textarea-bordered h-20"
+                placeholder="Tell us about yourself"
+                value={bio}
+                onChange={e => setBio(e.target.value)}
+              ></textarea>
+            </div>
+
+            <div className="divider">Connect Accounts</div>
+
+            <div className="flex flex-col gap-3">
+              <button className="btn btn-outline btn-primary" onClick={connectDiscord} disabled={isLoading}>
+                <FaDiscord size={20} />
+                <span className="ml-2">
+                  {profile?.discordUsername ? "Update Discord Connection" : "Connect Discord"}
+                </span>
+              </button>
+
+              <button className="btn btn-outline btn-accent" onClick={connectTwitter} disabled={isLoading}>
+                <FaTwitter size={20} />
+                <span className="ml-2">
+                  {profile?.twitterUsername ? "Update Twitter Connection" : "Connect Twitter"}
+                </span>
+              </button>
+            </div>
+
+            <div className="mt-6 flex justify-end space-x-2">
+              <button className="btn btn-outline" onClick={() => setIsProfileOpen(false)} disabled={isLoading}>
+                Cancel
+              </button>
+              <button className="btn btn-primary" onClick={saveProfile} disabled={isLoading}>
+                {isLoading ? <span className="loading loading-spinner loading-xs"></span> : null}
+                Save Profile
+              </button>
+            </div>
+          </div>
         </div>
 
-        <div className="form-control">
-          <label className="label">
-            <span className="label-text">Username *</span>
-          </label>
-          <input
-            type="text"
-            className="input input-bordered"
-            placeholder="Your username"
-            value={username}
-            onChange={e => setUsername(e.target.value)}
-          />
-        </div>
-
-        <div className="form-control mt-4">
-          <label className="label">
-            <span className="label-text">Bio</span>
-          </label>
-          <textarea
-            className="textarea textarea-bordered h-20"
-            placeholder="Tell us about yourself"
-            value={bio}
-            onChange={e => setBio(e.target.value)}
-          ></textarea>
-        </div>
-
-        <div className="divider">Connect Accounts</div>
-
-        <div className="flex flex-col gap-3">
-          <button className="btn btn-outline btn-primary" onClick={connectDiscord} disabled={isLoading}>
-            <FaDiscord size={20} />
-            <span className="ml-2">{profile?.discordUsername ? "Update Discord Connection" : "Connect Discord"}</span>
-          </button>
-
-          <button className="btn btn-outline btn-accent" onClick={connectTwitter} disabled={isLoading}>
-            <FaTwitter size={20} />
-            <span className="ml-2">{profile?.twitterUsername ? "Update Twitter Connection" : "Connect Twitter"}</span>
-          </button>
-        </div>
-
-        <div className="mt-6 flex justify-end space-x-2">
-          <button className="btn btn-outline" onClick={() => setIsProfileOpen(false)} disabled={isLoading}>
-            Cancel
-          </button>
-          <button className="btn btn-primary" onClick={saveProfile} disabled={isLoading}>
-            {isLoading ? <span className="loading loading-spinner loading-xs"></span> : null}
-            Save Profile
-          </button>
-        </div>
+        <style jsx>{`
+          .modal-backdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 99999;
+          }
+          .modal-container {
+            z-index: 100000;
+            max-width: 28rem;
+            width: 100%;
+            margin: 1rem;
+          }
+          .modal-content {
+            background-color: rgb(29, 34, 43); /* Grey background - you can adjust the color */
+            border-radius: 0.75rem;
+            box-shadow:
+              0 20px 25px -5px rgb(0 0 0 / 0.1),
+              0 8px 10px -6px rgb(0 0 0 / 0.1);
+            padding: 1.5rem;
+            color: white; /* Ensure text is visible against grey background */
+          }
+        `}</style>
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderProfileInfo = () => {
     if (!profile) return null;
@@ -219,11 +279,11 @@ const GMProfile = () => {
 
       {isConnected && !profile && !isLoading && (
         <button
-          className="mt-2 sm:mt-0 sm:ml-4 btn btn-sm btn-outline btn-primary"
+          className="mt-2 sm:mt-0 sm:ml-4 btn btn-sm btn-primary flex items-center text-white"
           onClick={() => setIsProfileOpen(true)}
         >
           <UserCircleIcon width={16} height={16} className="mr-1" />
-          Set Up Profile
+          <span>Set Up Profile</span>
         </button>
       )}
 
@@ -234,7 +294,7 @@ const GMProfile = () => {
         </div>
       )}
 
-      {isProfileOpen && renderProfileForm()}
+      {isMounted && isProfileOpen && createPortal(renderProfileModal(), document.body)}
     </div>
   );
 };

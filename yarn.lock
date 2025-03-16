@@ -3075,6 +3075,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@types/react-dom@npm:^19.0.4":
+  version: 19.0.4
+  resolution: "@types/react-dom@npm:19.0.4"
+  peerDependencies:
+    "@types/react": ^19.0.0
+  checksum: 2d0c74769ddcb4a9f404a62b3241d3e550ca962ff80c8c5b624f6626cd39f8b18aadee8e447424b52cffdd9165b1f02eb51020fc486584c8395236d97d4abedf
+  languageName: node
+  linkType: hard
+
 "@types/react@npm:^18.3.5":
   version: 18.3.18
   resolution: "@types/react@npm:18.3.18"
@@ -11959,6 +11968,7 @@ __metadata:
   resolution: "se-2@workspace:."
   dependencies:
     "@rainbow-me/rainbowkit": ^2.2.4
+    "@types/react-dom": ^19.0.4
     axios: ^1.8.3
     date-fns: ^4.1.0
     husky: ^9.1.6
