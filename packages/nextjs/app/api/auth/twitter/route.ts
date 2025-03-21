@@ -1,7 +1,7 @@
 // app/api/auth/twitter/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import User from "../../../../../models/User";
-import dbConnect from "../../../../../utils/mongodb";
+import User from "../../../../models/User";
+import dbConnect from "../../../../utils/mongodb";
 import crypto from "crypto";
 import OAuth from "oauth-1.0a";
 
@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Update user in database
-    const user = await User.findOneAndUpdate(
+    await User.findOneAndUpdate(
       { address: address },
       {
         twitterId: userId,
@@ -75,7 +75,8 @@ export async function GET(request: NextRequest) {
       { new: true, upsert: true },
     );
 
-    return NextResponse.json({ success: true, data: user });
+    // return NextResponse.json({ success: true, data: user });
+    return NextResponse.redirect(new URL("/", request.url));
   } catch (error) {
     console.error("Twitter auth error:", error);
     return NextResponse.json({ success: false, message: "Server error", error }, { status: 500 });

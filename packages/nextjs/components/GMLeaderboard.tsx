@@ -1,10 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import axios from "axios";
 import { usePublicClient } from "wagmi";
 import { Address } from "~~/components/scaffold-eth";
-import { useDeployedContractInfo } from "~~/hooks/scaffold-eth";
+import deployedContracts from "~~/contracts/deployedContracts";
 
 type LeaderboardEntry = {
   address: string;
@@ -20,115 +19,160 @@ const GMLeaderboard = () => {
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [timeframe, setTimeframe] = useState<"allTime" | "weekly" | "daily">("allTime");
-  const { data: dailyGmContract } = useDeployedContractInfo("DailyGM");
   const publicClient = usePublicClient();
+  const dailyGmContract = deployedContracts[10143]?.DailyGM;
 
   useEffect(() => {
     const fetchLeaderboardData = async () => {
+      console.log("Starting fetchLeaderboardData...");
+
       if (!dailyGmContract || !publicClient) {
+        console.error("Missing dependencies:", {
+          hasContract: !!dailyGmContract,
+          hasClient: !!publicClient,
+          contractAddress: dailyGmContract?.address,
+        });
         setIsLoading(false);
         return;
       }
 
+      console.log("Contract address:", dailyGmContract.address);
+      const chainId = await publicClient.getChainId();
+      console.log("Connected chain ID:", chainId);
+
+      if (chainId !== 10143) {
+        console.warn("Chain ID mismatch! Expected 10143, got:", chainId);
+      }
+
       try {
         setIsLoading(true);
-        console.log("Fetching GM events for leaderboard...");
 
-        // Fetch logs from the blockchain
-        const logs = await publicClient.getLogs({
-          address: dailyGmContract.address,
-          event: {
-            type: "event",
-            name: "GM",
-            inputs: [
-              { type: "address", name: "user", indexed: true },
-              { type: "address", name: "recipient", indexed: true },
-            ],
-          },
-          fromBlock: BigInt(0),
-          toBlock: "latest",
-        });
+        const currentBlock = await publicClient.getBlockNumber();
+        console.log("Current block number:", Number(currentBlock));
 
-        console.log(`Found ${logs.length} GM events for leaderboard`);
+        let fromBlock: bigint;
+        const BLOCK_RANGE_LIMIT = BigInt(100); // RPC limit
+        switch (timeframe) {
+          case "daily":
+            fromBlock = currentBlock - BigInt(28800);
+            break;
+          case "weekly":
+            fromBlock = currentBlock - BigInt(201600);
+            break;
+          default:
+            fromBlock = BigInt(7653632); // Adjust this to your contract deployment block later
+        }
 
-        // Process logs to build leaderboard
+        // Ensure fromBlock doesn't go negative
+        fromBlock = fromBlock < BigInt(0) ? BigInt(0) : fromBlock;
+        console.log(`Timeframe: ${timeframe}, From block: ${Number(fromBlock)}`);
+
+        // Paginate logs
+        let allLogs: any[] = [];
+        let startBlock = fromBlock;
+        const endBlock = currentBlock;
+
+        while (startBlock <= endBlock) {
+          const toBlock =
+            startBlock + BLOCK_RANGE_LIMIT - BigInt(1) > endBlock
+              ? endBlock
+              : startBlock + BLOCK_RANGE_LIMIT - BigInt(1);
+
+          console.log(`Fetching logs from ${Number(startBlock)} to ${Number(toBlock)}`);
+          const logs = await publicClient.getLogs({
+            address: dailyGmContract.address,
+            event: {
+              type: "event",
+              name: "GM",
+              inputs: [
+                { type: "address", name: "user", indexed: true },
+                { type: "address", name: "recipient", indexed: true },
+              ],
+            },
+            fromBlock: startBlock,
+            toBlock,
+          });
+
+          console.log(`Fetched ${logs.length} logs for range ${Number(startBlock)}-${Number(toBlock)}`);
+          allLogs = allLogs.concat(logs);
+          startBlock = toBlock + BigInt(1);
+        }
+
+        console.log("Total logs collected:", allLogs.length);
+
+        if (allLogs.length === 0) {
+          console.log("No events found for timeframe:", timeframe);
+          setLeaderboard([]);
+          return;
+        }
+
+        // Process logs
         const addressCounts: Record<string, number> = {};
         const lastGmTimes: Record<string, bigint> = {};
         const streaks: Record<string, number> = {};
 
-        // Filter logs based on timeframe
-        const now = BigInt(Math.floor(Date.now() / 1000));
-        const oneDay = BigInt(24 * 60 * 60);
-        const oneWeek = oneDay * BigInt(7);
-
-        const filteredLogs = logs.filter(log => {
-          if (timeframe === "allTime") return true;
-          // For demo purposes, we're using block numbers as a proxy for time
-          // In a real app, you'd use the actual timestamp
-          const blockDiff = now - log.blockNumber;
-          return timeframe === "weekly" ? blockDiff <= oneWeek : blockDiff <= oneDay;
-        });
-
-        // Count GMs by address
-        filteredLogs.forEach(log => {
-          const args = log.args as unknown as { user: string };
-          const user = args.user;
-
-          // Update counts
-          addressCounts[user] = (addressCounts[user] || 0) + 1;
-
-          // Update last GM time
-          const currentLastGm = lastGmTimes[user] || BigInt(0);
-          if (log.blockNumber > currentLastGm) {
-            lastGmTimes[user] = log.blockNumber;
-          }
-
-          // For demo purposes, calculate a simple streak
-          if (!streaks[user]) {
-            // In production, you would calculate actual streaks based on timestamps
-            streaks[user] = Math.floor(Math.random() * 10) + 1;
-          }
-        });
-
-        // Get unique addresses
-        const uniqueAddresses = Object.keys(addressCounts);
-
-        // Fetch user profiles from MongoDB for these addresses
-        const userProfiles: Record<string, any> = {};
-
-        if (uniqueAddresses.length > 0) {
+        allLogs.forEach((log, index) => {
           try {
-            const response = await axios.get(`/api/users/batch?addresses=${uniqueAddresses.join(",")}`);
-            if (response.data.success) {
-              response.data.data.forEach((user: any) => {
-                userProfiles[user.address] = user;
-              });
+            console.log(`Processing log #${index}:`, log);
+            const args = log.args as { user?: string; recipient?: string };
+            if (!args.user) {
+              console.warn("Log missing user arg:", log);
+              return;
+            }
+            const user = args.user.toLowerCase();
+            addressCounts[user] = (addressCounts[user] || 0) + 1;
+            lastGmTimes[user] = log.blockNumber || BigInt(0);
+            if (!streaks[user]) {
+              streaks[user] = 1; // Replace with actual streak logic later
             }
           } catch (error) {
-            console.error("Error fetching user profiles:", error);
-            // Continue with available data
+            console.error("Error processing log:", error, log);
           }
-        }
+        });
 
-        // Convert to array and sort
+        console.log("Processed address counts:", addressCounts);
+
         const leaderboardData = Object.entries(addressCounts).map(([address, count]) => ({
           address,
-          username: userProfiles[address]?.username || null,
-          discordUsername: userProfiles[address]?.discordUsername,
-          twitterUsername: userProfiles[address]?.twitterUsername,
+          username: null,
           count,
           streak: streaks[address] || 0,
           lastGM: lastGmTimes[address] || BigInt(0),
         }));
 
-        // Sort by count (descending)
         leaderboardData.sort((a, b) => b.count - a.count);
+        const topEntries = leaderboardData.slice(0, 10);
+        console.log("Top 10 entries before user data:", topEntries);
 
-        setLeaderboard(leaderboardData.slice(0, 10)); // Top 10
+        // Fetch user data
+        const addresses = topEntries.map(entry => entry.address).join(",");
+        console.log("Fetching user data for addresses:", addresses);
+        const response = await fetch(`/api/users/batch?addresses=${addresses}`);
+        const userData = await response.json();
+        console.log("User data response:", userData);
+
+        if (userData.success) {
+          const enrichedLeaderboard = topEntries.map(entry => {
+            const user = userData.data.find((u: any) => u.address.toLowerCase() === entry.address.toLowerCase());
+            return {
+              ...entry,
+              username: user?.username || null,
+              twitterUsername: user?.twitterUsername || null,
+              discordUsername: user?.discordUsername || null,
+            };
+          });
+          console.log("Final enriched leaderboard:", enrichedLeaderboard);
+          setLeaderboard(enrichedLeaderboard);
+        } else {
+          console.error("Failed to fetch user data:", userData.message);
+          setLeaderboard(topEntries);
+        }
       } catch (error) {
-        console.error("Error building leaderboard:", error);
+        console.error("Error in fetchLeaderboardData:", error);
+        setLeaderboard([]);
       } finally {
         setIsLoading(false);
+        console.log("Fetch complete, isLoading set to false");
       }
     };
 
@@ -208,7 +252,6 @@ const GMLeaderboard = () => {
         </div>
       )}
 
-      {/* Anti-Bot Notice */}
       <div className="mt-4 bg-base-200 p-3 rounded-lg text-sm opacity-80">
         <p>
           <span className="font-bold">🛡️ Anti-Bot Protection:</span> Our system detects and filters out suspicious

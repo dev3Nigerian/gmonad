@@ -6,6 +6,7 @@ import GMDashboard from "../components/GMDashboard";
 import GMEvents from "../components/GMEvents";
 import GMLeaderboard from "../components/GMLeaderboard";
 import GMProfile from "../components/GMProfile";
+// import GMSearch from "../components/GMSearch";
 import type { NextPage } from "next";
 import { SunIcon } from "@heroicons/react/24/outline";
 
@@ -58,6 +59,8 @@ const Home: NextPage = () => {
           <div className="animate-fade-in-up animation-delay-500">
             <GMDashboard />
           </div>
+
+          {/* Search with animation */}
 
           {/* Leaderboard with animation */}
           <div className="animate-fade-in-up animation-delay-600">
