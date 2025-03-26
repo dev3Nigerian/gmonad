@@ -1,3 +1,9 @@
 {
-  "installCommand": "yarn install"
+  "installCommand": "yarn install",
+  "crons": [
+    {
+      "path": "app/api/index-gm-events",
+      "schedule": "*/5 * * * *"
+    }
+  ]
 }
