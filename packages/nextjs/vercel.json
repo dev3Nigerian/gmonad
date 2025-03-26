@@ -3,7 +3,7 @@
   "crons": [
     {
       "path": "/app/api/index-gm-events",
-      "schedule": "*/5 * * * *"
+      "schedule": "0 0 * * *"
     }
   ]
 }
