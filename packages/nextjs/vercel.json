@@ -1,4 +1,9 @@
 {
-  "installCommand": "yarn install"
- 
+  "installCommand": "yarn install",
+  "crons": [
+    {
+      "path": "/app/api/indexgm/",
+      "schedule": "0 0 * * *"
+    }
+  ]
 }
