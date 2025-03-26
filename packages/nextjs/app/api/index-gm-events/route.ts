@@ -1,8 +1,8 @@
 // pages/api/index-gm-events.ts
+import { NextResponse } from "next/server";
 import deployedContracts from "../../../contracts/externalContracts";
 import GMEvent from "../../../models/GMEvent";
 import dbConnect from "../../../utils/mongodb";
-import { NextApiRequest, NextApiResponse } from "next";
 import { createPublicClient, http, parseAbiItem } from "viem";
 import { defineChain } from "viem";
 
@@ -22,7 +22,6 @@ const typedDeployedContracts = deployedContracts as {
   [chainId: number]: { [contractName: string]: { address: `0x${string}`; abi: any[] } };
 };
 const dailyGmContract = typedDeployedContracts[10143]?.DailyGM;
-// const dailyGmContract = deployedContracts[10143]?.DailyGM;
 
 if (!dailyGmContract) {
   throw new Error("DailyGM contract not found in deployedContracts for chain 10143");
@@ -30,7 +29,7 @@ if (!dailyGmContract) {
 
 const lastGMAbi = parseAbiItem("function lastGM(address) view returns (uint256)");
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+export async function GET() {
   console.log("Starting GM event indexing...");
 
   try {
@@ -38,7 +37,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.log("Connected to MongoDB");
   } catch (error) {
     console.error("Failed to connect to MongoDB:", error);
-    return res.status(500).json({ success: false, error: "MongoDB connection failed" });
+    return NextResponse.json({ success: false, error: "MongoDB connection failed" }, { status: 500 });
   }
 
   const lastIndexedBlock = (await GMEvent.findOne().sort({ blockNumber: -1 }))?.blockNumber || 7653631;
@@ -50,7 +49,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (lastIndexedBlock >= Number(currentBlock)) {
     console.log("No new blocks to index");
-    return res.status(200).json({ success: true, message: "No new blocks" });
+    return NextResponse.json({ success: true, message: "No new blocks" });
   }
 
   console.log(`Indexing from block ${lastIndexedBlock + 1} to ${currentBlock}`);
@@ -114,5 +113,5 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   console.log("Indexing complete for this run");
-  res.status(200).json({ success: true, message: "Indexing complete" });
+  return NextResponse.json({ success: true, message: "Indexing complete" });
 }
