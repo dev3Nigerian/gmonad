@@ -1,6 +1,6 @@
 // pages/api/index-gm-events.ts
 import { NextResponse } from "next/server";
-import deployedContracts from "../../../contracts/externalContracts";
+import deployedContracts from "../../../contracts/deployedContracts";
 import GMEvent from "../../../models/GMEvent";
 import dbConnect from "../../../utils/mongodb";
 import { createPublicClient, http, parseAbiItem } from "viem";
@@ -18,10 +18,7 @@ const client = createPublicClient({
   transport: http(),
 });
 
-const typedDeployedContracts = deployedContracts as {
-  [chainId: number]: { [contractName: string]: { address: `0x${string}`; abi: any[] } };
-};
-const dailyGmContract = typedDeployedContracts[10143]?.DailyGM;
+const dailyGmContract = deployedContracts[10143]?.DailyGM;
 
 if (!dailyGmContract) {
   throw new Error("DailyGM contract not found in deployedContracts for chain 10143");
