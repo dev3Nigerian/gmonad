@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { usePublicClient } from "wagmi";
+import axios from "axios";
+import { useAccount } from "wagmi";
+// Import wagmi hook to get user's address
 import { Address } from "~~/components/scaffold-eth";
-import deployedContracts from "~~/contracts/deployedContracts";
 
 type LeaderboardEntry = {
   address: string;
@@ -12,172 +13,68 @@ type LeaderboardEntry = {
   twitterUsername?: string;
   count: number;
   streak: number;
-  lastGM: bigint;
+  lastGM: number;
 };
 
 const GMLeaderboard = () => {
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [userEntry, setUserEntry] = useState<LeaderboardEntry | null>(null); // State for logged-in user's entry
   const [isLoading, setIsLoading] = useState(true);
   const [timeframe, setTimeframe] = useState<"allTime" | "weekly" | "daily">("allTime");
-  const publicClient = usePublicClient();
-  const dailyGmContract = deployedContracts[10143]?.DailyGM;
+  const { address: userAddress } = useAccount(); // Get the connected user's address
 
   useEffect(() => {
     const fetchLeaderboardData = async () => {
       console.log("Starting fetchLeaderboardData...");
-
-      if (!dailyGmContract || !publicClient) {
-        console.error("Missing dependencies:", {
-          hasContract: !!dailyGmContract,
-          hasClient: !!publicClient,
-          contractAddress: dailyGmContract?.address,
-        });
-        setIsLoading(false);
-        return;
-      }
-
-      console.log("Contract address:", dailyGmContract.address);
-      const chainId = await publicClient.getChainId();
-      console.log("Connected chain ID:", chainId);
-
-      if (chainId !== 10143) {
-        console.warn("Chain ID mismatch! Expected 10143, got:", chainId);
-      }
-
       try {
         setIsLoading(true);
+        console.log(`Fetching leaderboard for timeframe: ${timeframe}`);
+        const response = await axios.get(`/api/auth/leaderboard?timeframe=${timeframe}`);
+        // const data = await response.json();
+        const data = response.data;
+        console.log("Leaderboard API response:", data);
 
-        const currentBlock = await publicClient.getBlockNumber();
-        console.log("Current block number:", Number(currentBlock));
-
-        let fromBlock: bigint;
-        const BLOCK_RANGE_LIMIT = BigInt(100); // RPC limit
-        switch (timeframe) {
-          case "daily":
-            fromBlock = currentBlock - BigInt(28800);
-            break;
-          case "weekly":
-            fromBlock = currentBlock - BigInt(201600);
-            break;
-          default:
-            fromBlock = BigInt(7653632); // Adjust this to your contract deployment block later
-        }
-
-        // Ensure fromBlock doesn't go negative
-        fromBlock = fromBlock < BigInt(0) ? BigInt(0) : fromBlock;
-        console.log(`Timeframe: ${timeframe}, From block: ${Number(fromBlock)}`);
-
-        // Paginate logs
-        let allLogs: any[] = [];
-        let startBlock = fromBlock;
-        const endBlock = currentBlock;
-
-        while (startBlock <= endBlock) {
-          const toBlock =
-            startBlock + BLOCK_RANGE_LIMIT - BigInt(1) > endBlock
-              ? endBlock
-              : startBlock + BLOCK_RANGE_LIMIT - BigInt(1);
-
-          console.log(`Fetching logs from ${Number(startBlock)} to ${Number(toBlock)}`);
-          const logs = await publicClient.getLogs({
-            address: dailyGmContract.address,
-            event: {
-              type: "event",
-              name: "GM",
-              inputs: [
-                { type: "address", name: "user", indexed: true },
-                { type: "address", name: "recipient", indexed: true },
-              ],
-            },
-            fromBlock: startBlock,
-            toBlock,
-          });
-
-          console.log(`Fetched ${logs.length} logs for range ${Number(startBlock)}-${Number(toBlock)}`);
-          allLogs = allLogs.concat(logs);
-          startBlock = toBlock + BigInt(1);
-        }
-
-        console.log("Total logs collected:", allLogs.length);
-
-        if (allLogs.length === 0) {
-          console.log("No events found for timeframe:", timeframe);
+        if (!data.success || !data.entries) {
+          console.log("No leaderboard data found for timeframe:", timeframe);
           setLeaderboard([]);
+          setUserEntry(null);
           return;
         }
 
-        // Process logs
-        const addressCounts: Record<string, number> = {};
-        const lastGmTimes: Record<string, bigint> = {};
-        const streaks: Record<string, number> = {};
+        const entries = data.entries as LeaderboardEntry[];
+        setLeaderboard(entries.slice(0, 10)); // Top 10
 
-        allLogs.forEach((log, index) => {
-          try {
-            console.log(`Processing log #${index}:`, log);
-            const args = log.args as { user?: string; recipient?: string };
-            if (!args.user) {
-              console.warn("Log missing user arg:", log);
-              return;
-            }
-            const user = args.user.toLowerCase();
-            addressCounts[user] = (addressCounts[user] || 0) + 1;
-            lastGmTimes[user] = log.blockNumber || BigInt(0);
-            if (!streaks[user]) {
-              streaks[user] = 1; // Replace with actual streak logic later
-            }
-          } catch (error) {
-            console.error("Error processing log:", error, log);
-          }
-        });
-
-        console.log("Processed address counts:", addressCounts);
-
-        const leaderboardData = Object.entries(addressCounts).map(([address, count]) => ({
-          address,
-          username: null,
-          count,
-          streak: streaks[address] || 0,
-          lastGM: lastGmTimes[address] || BigInt(0),
-        }));
-
-        leaderboardData.sort((a, b) => b.count - a.count);
-        const topEntries = leaderboardData.slice(0, 10);
-        console.log("Top 10 entries before user data:", topEntries);
-
-        // Fetch user data
-        const addresses = topEntries.map(entry => entry.address).join(",");
-        console.log("Fetching user data for addresses:", addresses);
-        const response = await fetch(`/api/users/batch?addresses=${addresses}`);
-        const userData = await response.json();
-        console.log("User data response:", userData);
-
-        if (userData.success) {
-          const enrichedLeaderboard = topEntries.map(entry => {
-            const user = userData.data.find((u: any) => u.address.toLowerCase() === entry.address.toLowerCase());
-            return {
-              ...entry,
-              username: user?.username || null,
-              twitterUsername: user?.twitterUsername || null,
-              discordUsername: user?.discordUsername || null,
-            };
-          });
-          console.log("Final enriched leaderboard:", enrichedLeaderboard);
-          setLeaderboard(enrichedLeaderboard);
+        // Find the logged-in user's entry
+        if (userAddress) {
+          const userLowercase = userAddress.toLowerCase();
+          const userData = entries.find(entry => entry.address.toLowerCase() === userLowercase);
+          setUserEntry(userData || null);
         } else {
-          console.error("Failed to fetch user data:", userData.message);
-          setLeaderboard(topEntries);
+          setUserEntry(null);
         }
       } catch (error) {
-        console.error("Error in fetchLeaderboardData:", error);
+        console.error("Error fetching leaderboard:", error);
         setLeaderboard([]);
+        setUserEntry(null);
       } finally {
         setIsLoading(false);
-        console.log("Fetch complete, isLoading set to false");
+        console.log("Fetch complete");
       }
     };
 
     fetchLeaderboardData();
-  }, [dailyGmContract, publicClient, timeframe]);
+  }, [timeframe, userAddress]); // Add userAddress as a dependency
+
+  const formatTimestamp = (timestamp: number) => {
+    return new Date(timestamp * 1000).toLocaleString();
+  };
+
+  // Calculate user's rank (1-based index)
+  const getUserRank = () => {
+    if (!userEntry || !leaderboard.length) return "N/A";
+    const userIndex = leaderboard.findIndex(entry => entry.address.toLowerCase() === userAddress?.toLowerCase());
+    return userIndex !== -1 ? userIndex + 1 : "Not in Top 10";
+  };
 
   return (
     <div className="mt-12 w-full max-w-3xl mx-auto">
@@ -195,6 +92,42 @@ const GMLeaderboard = () => {
           </a>
         </div>
       </div>
+
+      {/* User's Rank and Details */}
+      {userAddress && (
+        <div className="mb-6 bg-base-100 p-4 rounded-lg shadow">
+          <h3 className="text-lg font-semibold">Your Stats</h3>
+          {userEntry ? (
+            <div className="mt-2">
+              <p>
+                <strong>Rank:</strong> {getUserRank()}
+              </p>
+              <p>
+                <strong>Address:</strong> <Address address={userEntry.address} />
+              </p>
+              {userEntry.username && (
+                <p>
+                  <strong>Username:</strong> {userEntry.username}
+                </p>
+              )}
+              <p>
+                <strong>GM Count:</strong> {userEntry.count}
+              </p>
+              <p>
+                <strong>Streak:</strong> {userEntry.streak} 🔥
+              </p>
+              <p>
+                <strong>Last GM:</strong> {formatTimestamp(userEntry.lastGM)}
+              </p>
+              <p>
+                <strong>Score:</strong> {userEntry.count * 10 + userEntry.streak * 5}
+              </p>
+            </div>
+          ) : (
+            <p className="mt-2 opacity-70">You haven’t said GM yet in this timeframe.</p>
+          )}
+        </div>
+      )}
 
       {isLoading ? (
         <div className="text-center py-10 bg-base-200 rounded-xl">
@@ -214,12 +147,16 @@ const GMLeaderboard = () => {
                 <th>User</th>
                 <th className="text-center">GM Count</th>
                 <th className="text-center">Streak</th>
+                <th className="text-center">Last GM</th>
                 <th className="text-center">Score</th>
               </tr>
             </thead>
             <tbody>
               {leaderboard.map((entry, index) => (
-                <tr key={entry.address} className="hover">
+                <tr
+                  key={entry.address}
+                  className={`hover ${userAddress && entry.address.toLowerCase() === userAddress.toLowerCase() ? "bg-primary bg-opacity-20" : ""}`}
+                >
                   <td className="text-center font-bold">
                     {index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : `#${index + 1}`}
                   </td>
@@ -244,6 +181,7 @@ const GMLeaderboard = () => {
                       <span className="ml-1 text-orange-500">🔥</span>
                     </div>
                   </td>
+                  <td className="text-center">{formatTimestamp(entry.lastGM)}</td>
                   <td className="text-center font-bold">{entry.count * 10 + entry.streak * 5}</td>
                 </tr>
               ))}
