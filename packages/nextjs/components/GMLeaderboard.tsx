@@ -65,8 +65,13 @@ const GMLeaderboard = () => {
     fetchLeaderboardData();
   }, [timeframe, userAddress]); // Add userAddress as a dependency
 
+  // Update your formatting function to explicitly handle different inputs
   const formatTimestamp = (timestamp: number) => {
-    return new Date(timestamp * 1000).toLocaleString();
+    // Always ensure timestamp is treated as a number
+    const timestampNumber = Number(timestamp);
+
+    // Convert from seconds to milliseconds for the Date constructor
+    return new Date(timestampNumber * 1000).toLocaleString();
   };
 
   // Calculate user's rank (1-based index)

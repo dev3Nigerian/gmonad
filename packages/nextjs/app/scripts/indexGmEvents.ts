@@ -80,6 +80,23 @@ async function indexEvents() {
       const blocks = await Promise.all(blockNumbers.map(blockNumber => client.getBlock({ blockNumber })));
       const blockTimestamps = new Map(blocks.map(block => [block.number, block.timestamp]));
 
+      // Add this debugging code after creating blockTimestamps
+      console.log("Sample block timestamps:");
+      let i = 0;
+      for (const [blockNum, timestamp] of blockTimestamps.entries()) {
+        console.log(`Block ${blockNum}: ${timestamp} (${typeof timestamp})`);
+        console.log(`Date: ${new Date(Number(timestamp) * 1000).toUTCString()}`);
+        if (++i >= 3) break; // Just show first 3 for brevity
+      }
+      // And debug each event timestamp
+      logs.slice(0, 3).forEach((log, i) => {
+        const ts = blockTimestamps.get(log.blockNumber!);
+        console.log(`Log ${i} from block ${log.blockNumber}:`);
+        console.log(`- Raw timestamp: ${ts} (${typeof ts})`);
+        console.log(`- Converted: ${Number(ts)}`);
+        console.log(`- As date: ${new Date(Number(ts) * 1000).toUTCString()}`);
+      });
+
       // Process logs into GMEvent documents
       const events = await Promise.all(
         logs.map(async log => {

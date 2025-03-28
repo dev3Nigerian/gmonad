@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
         $group: {
           _id: "$user",
           count: { $sum: 1 },
-          lastGM: { $max: "$blockNumber" },
+          lastGM: { $max: "$timestamp" },
           timestamps: { $push: "$timestamp" }, // For streak calculation
         },
       },
