@@ -12,6 +12,7 @@ type LeaderboardEntry = {
   discordUsername?: string;
   twitterUsername?: string;
   count: number;
+  receivedCount: number;
   streak: number;
   lastGM: number;
 };
@@ -19,6 +20,7 @@ type LeaderboardEntry = {
 const GMLeaderboard = () => {
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [userEntry, setUserEntry] = useState<LeaderboardEntry | null>(null); // State for logged-in user's entry
+  const [userRank, setUserRank] = useState<string | number>("N/A");
   const [isLoading, setIsLoading] = useState(true);
   const [timeframe, setTimeframe] = useState<"allTime" | "weekly" | "daily">("allTime");
   const { address: userAddress } = useAccount(); // Get the connected user's address
@@ -30,7 +32,6 @@ const GMLeaderboard = () => {
         setIsLoading(true);
         console.log(`Fetching leaderboard for timeframe: ${timeframe}`);
         const response = await axios.get(`/api/auth/leaderboard?timeframe=${timeframe}`);
-        // const data = await response.json();
         const data = response.data;
         console.log("Leaderboard API response:", data);
 
@@ -38,6 +39,7 @@ const GMLeaderboard = () => {
           console.log("No leaderboard data found for timeframe:", timeframe);
           setLeaderboard([]);
           setUserEntry(null);
+          setUserRank("N/A");
           return;
         }
 
@@ -49,13 +51,23 @@ const GMLeaderboard = () => {
           const userLowercase = userAddress.toLowerCase();
           const userData = entries.find(entry => entry.address.toLowerCase() === userLowercase);
           setUserEntry(userData || null);
+
+          // Calculate user's rank
+          if (userData) {
+            const position = entries.findIndex(entry => entry.address.toLowerCase() === userLowercase);
+            setUserRank(position !== -1 ? position + 1 : "Not in Top 100");
+          } else {
+            setUserRank("Not Ranked");
+          }
         } else {
           setUserEntry(null);
+          setUserRank("N/A");
         }
       } catch (error) {
         console.error("Error fetching leaderboard:", error);
         setLeaderboard([]);
         setUserEntry(null);
+        setUserRank("N/A");
       } finally {
         setIsLoading(false);
         console.log("Fetch complete");
@@ -63,7 +75,7 @@ const GMLeaderboard = () => {
     };
 
     fetchLeaderboardData();
-  }, [timeframe, userAddress]); // Add userAddress as a dependency
+  }, [timeframe, userAddress]);
 
   // Update your formatting function to explicitly handle different inputs
   const formatTimestamp = (timestamp: number) => {
@@ -72,13 +84,6 @@ const GMLeaderboard = () => {
 
     // Convert from seconds to milliseconds for the Date constructor
     return new Date(timestampNumber * 1000).toLocaleString();
-  };
-
-  // Calculate user's rank (1-based index)
-  const getUserRank = () => {
-    if (!userEntry || !leaderboard.length) return "N/A";
-    const userIndex = leaderboard.findIndex(entry => entry.address.toLowerCase() === userAddress?.toLowerCase());
-    return userIndex !== -1 ? userIndex + 1 : "Not in Top 10";
   };
 
   return (
@@ -104,32 +109,65 @@ const GMLeaderboard = () => {
           <h3 className="text-lg font-semibold">Your Stats</h3>
           {userEntry ? (
             <div className="mt-2">
-              <p>
-                <strong>Rank:</strong> {getUserRank()}
-              </p>
+              <div className="flex flex-wrap justify-between items-center mb-2">
+                <p>
+                  <strong>Rank:</strong> {typeof userRank === "number" ? `#${userRank}` : userRank}
+                </p>
+                <div className="badge badge-primary">{userEntry.receivedCount} messages received</div>
+              </div>
+
               <p>
                 <strong>Address:</strong> <Address address={userEntry.address} />
               </p>
+
               {userEntry.username && (
                 <p>
                   <strong>Username:</strong> {userEntry.username}
                 </p>
               )}
-              <p>
-                <strong>GM Count:</strong> {userEntry.count}
-              </p>
-              <p>
-                <strong>Streak:</strong> {userEntry.streak} 🔥
-              </p>
-              <p>
-                <strong>Last GM:</strong> {formatTimestamp(userEntry.lastGM)}
-              </p>
-              <p>
-                <strong>Score:</strong> {userEntry.count * 10 + userEntry.streak * 5}
-              </p>
+
+              <div className="grid grid-cols-2 gap-4 mt-3">
+                <div className="bg-base-200 p-2 rounded-md">
+                  <p className="text-sm opacity-70">GM Sent</p>
+                  <p className="text-xl font-bold">{userEntry.count}</p>
+                </div>
+
+                <div className="bg-base-200 p-2 rounded-md">
+                  <p className="text-sm opacity-70">GM Received</p>
+                  <p className="text-xl font-bold">{userEntry.receivedCount}</p>
+                </div>
+
+                <div className="bg-base-200 p-2 rounded-md">
+                  <p className="text-sm opacity-70">Current Streak</p>
+                  <p className="text-xl font-bold flex items-center">
+                    {userEntry.streak}
+                    <span className="ml-1 text-orange-500">🔥</span>
+                  </p>
+                </div>
+
+                <div className="bg-base-200 p-2 rounded-md">
+                  <p className="text-sm opacity-70">Last GM</p>
+                  <p className="text-sm font-bold">{formatTimestamp(userEntry.lastGM)}</p>
+                </div>
+              </div>
+
+              <div className="mt-3 pt-2 border-t border-base-300">
+                <p className="font-semibold flex justify-between">
+                  <span>Total Score:</span>
+                  <span className="text-primary text-lg">{userEntry.count * 10 + userEntry.streak * 5}</span>
+                </p>
+              </div>
             </div>
           ) : (
-            <p className="mt-2 opacity-70">You haven’t said GM yet in this timeframe.</p>
+            <div className="mt-2">
+              <p className="opacity-70">You haven&apos;t said GM yet in this timeframe.</p>
+              {/* <button 
+                className="btn btn-primary btn-sm mt-2"
+                onClick={() => window.location.href = "/gm"}
+              >
+                Say GM Now
+              </button> */}
+            </div>
           )}
         </div>
       )}
@@ -150,7 +188,8 @@ const GMLeaderboard = () => {
               <tr>
                 <th className="text-center">Rank</th>
                 <th>User</th>
-                <th className="text-center">GM Count</th>
+                <th className="text-center">GM Sent</th>
+                <th className="text-center">GM Received</th>
                 <th className="text-center">Streak</th>
                 <th className="text-center">Last GM</th>
                 <th className="text-center">Score</th>
@@ -180,6 +219,7 @@ const GMLeaderboard = () => {
                     </div>
                   </td>
                   <td className="text-center">{entry.count}</td>
+                  <td className="text-center">{entry.receivedCount}</td>
                   <td className="text-center">
                     <div className="flex items-center justify-center">
                       <span className="font-mono">{entry.streak}</span>
