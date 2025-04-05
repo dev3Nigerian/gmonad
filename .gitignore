@@ -22,3 +22,4 @@ node_modules
 # cli
 dist
 packages/nextjs/logs/index.log
+packages/nextjs/app/api/index-gm-events/route.ts
