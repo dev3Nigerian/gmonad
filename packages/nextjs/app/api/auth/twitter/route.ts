@@ -1,4 +1,5 @@
 // app/api/auth/twitter/route.ts
+import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import User from "../../../../models/User";
 import dbConnect from "../../../../utils/mongodb";
@@ -8,7 +9,6 @@ import OAuth from "oauth-1.0a";
 // Twitter OAuth constants
 const TWITTER_API_KEY = process.env.TWITTER_API_KEY!;
 const TWITTER_API_SECRET = process.env.TWITTER_API_SECRET!;
-// const TWITTER_CALLBACK_URL = process.env.TWITTER_CALLBACK_URL!;
 
 export async function GET(request: NextRequest) {
   await dbConnect();
@@ -65,6 +65,23 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, message: "Failed to get Twitter user info" }, { status: 400 });
     }
 
+    // Check if this Twitter account is already linked to another address
+    const existingUser = await User.findOne({
+      twitterId: userId,
+      address: { $ne: address },
+    });
+
+    if (existingUser) {
+      // Set an auth error cookie that will be read by the client
+      const cookieStore = cookies();
+      cookieStore.set("auth_error", "This Twitter account is already linked to another wallet address", {
+        maxAge: 30, // 30 seconds
+        path: "/",
+      });
+
+      return NextResponse.redirect(new URL("/", request.url));
+    }
+
     // Update user in database
     await User.findOneAndUpdate(
       { address: address },
@@ -75,10 +92,25 @@ export async function GET(request: NextRequest) {
       { new: true, upsert: true },
     );
 
-    // return NextResponse.json({ success: true, data: user });
+    // Set a success cookie
+    const cookieStore = cookies();
+    cookieStore.set("auth_success", "Twitter account connected successfully", {
+      maxAge: 30,
+      path: "/",
+    });
+
+    // Redirect back to the homepage
     return NextResponse.redirect(new URL("/", request.url));
   } catch (error) {
     console.error("Twitter auth error:", error);
-    return NextResponse.json({ success: false, message: "Server error", error }, { status: 500 });
+
+    // Set an error cookie
+    const cookieStore = cookies();
+    cookieStore.set("auth_error", "Failed to connect Twitter account", {
+      maxAge: 30,
+      path: "/",
+    });
+
+    return NextResponse.redirect(new URL("/", request.url));
   }
 }

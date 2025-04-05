@@ -196,40 +196,48 @@ const GMLeaderboard = () => {
               </tr>
             </thead>
             <tbody>
-              {leaderboard.map((entry, index) => (
-                <tr
-                  key={entry.address}
-                  className={`hover ${userAddress && entry.address.toLowerCase() === userAddress.toLowerCase() ? "bg-primary bg-opacity-20" : ""}`}
-                >
-                  <td className="text-center font-bold">
-                    {index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : `#${index + 1}`}
-                  </td>
-                  <td>
-                    <div className="flex flex-col">
-                      {entry.username && <span className="text-sm font-bold text-primary">{entry.username}</span>}
-                      <Address address={entry.address} />
-                      <div className="flex mt-1 space-x-1">
-                        {entry.discordUsername && (
-                          <span className="text-xs badge badge-outline text-indigo-500 border-indigo-300">Discord</span>
-                        )}
-                        {entry.twitterUsername && (
-                          <span className="text-xs badge badge-outline text-blue-500 border-blue-300">Twitter</span>
-                        )}
+              {leaderboard
+                .map(entry => ({
+                  ...entry,
+                  score: entry.count * 10 + entry.streak * 5 + entry.receivedCount * 2,
+                }))
+                .sort((a, b) => b.score - a.score)
+                .map((entry, index) => (
+                  <tr
+                    key={entry.address}
+                    className={`hover ${userAddress && entry.address.toLowerCase() === userAddress.toLowerCase() ? "bg-primary bg-opacity-20" : ""}`}
+                  >
+                    <td className="text-center font-bold">
+                      {index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : `#${index + 1}`}
+                    </td>
+                    <td>
+                      <div className="flex flex-col">
+                        {entry.username && <span className="text-sm font-bold text-primary">{entry.username}</span>}
+                        <Address address={entry.address} />
+                        <div className="flex mt-1 space-x-1">
+                          {entry.discordUsername && (
+                            <span className="text-xs badge badge-outline text-indigo-500 border-indigo-300">
+                              Discord
+                            </span>
+                          )}
+                          {entry.twitterUsername && (
+                            <span className="text-xs badge badge-outline text-blue-500 border-blue-300">Twitter</span>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  </td>
-                  <td className="text-center">{entry.count}</td>
-                  <td className="text-center">{entry.receivedCount}</td>
-                  <td className="text-center">
-                    <div className="flex items-center justify-center">
-                      <span className="font-mono">{entry.streak}</span>
-                      <span className="ml-1 text-orange-500">🔥</span>
-                    </div>
-                  </td>
-                  <td className="text-center">{formatTimestamp(entry.lastGM)}</td>
-                  <td className="text-center font-bold">{entry.count * 10 + entry.streak * 5}</td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="text-center">{entry.count}</td>
+                    <td className="text-center">{entry.receivedCount}</td>
+                    <td className="text-center">
+                      <div className="flex items-center justify-center">
+                        <span className="font-mono">{entry.streak}</span>
+                        <span className="ml-1 text-orange-500">🔥</span>
+                      </div>
+                    </td>
+                    <td className="text-center">{formatTimestamp(entry.lastGM)}</td>
+                    <td className="text-center font-bold">{entry.score}</td>
+                  </tr>
+                ))}
             </tbody>
           </table>
         </div>
