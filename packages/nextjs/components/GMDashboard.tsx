@@ -196,7 +196,7 @@ const GMDashboard = () => {
       }
     }
 
-    const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(tweetText)}&url=${encodeURIComponent("https://https://gmonad-pi.vercel.app/")}`;
+    const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(tweetText)}&url=${encodeURIComponent("https://gmonad-pi.vercel.app/")}`;
     window.open(twitterUrl, "_blank");
   };
 
