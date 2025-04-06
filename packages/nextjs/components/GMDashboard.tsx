@@ -185,14 +185,14 @@ const GMDashboard = () => {
     let tweetText = "";
 
     if (lastGmType === "general") {
-      tweetText = `I just said GM to everyone on the Monad blockchain! #GMONAD #MonadBlockchain`;
+      tweetText = `I just said GM to everyone on the Monad blockchain! @monad_xyz #GMonad`;
     } else if (lastGmType === "directed") {
       if (recipientTwitter) {
-        tweetText = `I just said GM to @${recipientTwitter} on the Monad blockchain! #GMONAD #MonadBlockchain`;
+        tweetText = `I just said GM to @${recipientTwitter} on the Monad blockchain! @monad_xyz #GMonad`;
       } else if (recipientUsername) {
-        tweetText = `I just said GM to ${recipientUsername} on the Monad blockchain! #GMONAD #MonadBlockchain`;
+        tweetText = `I just said GM to ${recipientUsername} on the Monad blockchain! @monad_xyz #GMonad`;
       } else {
-        tweetText = `I just said GM to someone special on the Monad blockchain! #GMONAD #MonadBlockchain`;
+        tweetText = `I just said GM to someone special on the Monad blockchain! @monad_xyz #GMonad`;
       }
     }
 
