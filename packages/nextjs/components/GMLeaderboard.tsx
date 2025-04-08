@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import axios from "axios";
+import { FaDiscord, FaTwitter, FaUser } from "react-icons/fa";
 import { useAccount } from "wagmi";
-// Import wagmi hook to get user's address
 import { Address } from "~~/components/scaffold-eth";
 
 type LeaderboardEntry = {
@@ -19,11 +19,31 @@ type LeaderboardEntry = {
 
 const GMLeaderboard = () => {
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
-  const [userEntry, setUserEntry] = useState<LeaderboardEntry | null>(null); // State for logged-in user's entry
+  const [currentPage, setCurrentPage] = useState(1);
+  const entriesPerPage = 10;
+  const [userEntry, setUserEntry] = useState<LeaderboardEntry | null>(null);
   const [userRank, setUserRank] = useState<string | number>("N/A");
   const [isLoading, setIsLoading] = useState(true);
   const [timeframe, setTimeframe] = useState<"allTime" | "weekly" | "daily">("allTime");
-  const { address: userAddress } = useAccount(); // Get the connected user's address
+  const { address: userAddress } = useAccount();
+
+  // Function to calculate score
+  const calculateScore = (entry: LeaderboardEntry) => {
+    return entry.count * 10 + entry.streak * 5 + entry.receivedCount * 2;
+  };
+
+  // Function to get display name for a user
+  const getDisplayName = (entry: LeaderboardEntry) => {
+    if (entry.twitterUsername) {
+      return { name: `@${entry.twitterUsername}`, type: "twitter" };
+    } else if (entry.discordUsername) {
+      return { name: entry.discordUsername, type: "discord" };
+    } else if (entry.username) {
+      return { name: entry.username, type: "username" };
+    } else {
+      return { name: null, type: "address" };
+    }
+  };
 
   useEffect(() => {
     const fetchLeaderboardData = async () => {
@@ -44,7 +64,11 @@ const GMLeaderboard = () => {
         }
 
         const entries = data.entries as LeaderboardEntry[];
-        setLeaderboard(entries.slice(0, 10)); // Top 10
+
+        // Sort entries by score before slicing
+        const sortedEntries = [...entries].sort((a, b) => calculateScore(b) - calculateScore(a));
+
+        setLeaderboard(sortedEntries.slice(0, 100)); // Store top 100
 
         // Find the logged-in user's entry
         if (userAddress) {
@@ -54,7 +78,8 @@ const GMLeaderboard = () => {
 
           // Calculate user's rank
           if (userData) {
-            const position = entries.findIndex(entry => entry.address.toLowerCase() === userLowercase);
+            // Count how many users have a higher score than the current user
+            const position = sortedEntries.findIndex(entry => entry.address.toLowerCase() === userLowercase);
             setUserRank(position !== -1 ? position + 1 : "Not in Top 100");
           } else {
             setUserRank("Not Ranked");
@@ -77,12 +102,8 @@ const GMLeaderboard = () => {
     fetchLeaderboardData();
   }, [timeframe, userAddress]);
 
-  // Update your formatting function to explicitly handle different inputs
   const formatTimestamp = (timestamp: number) => {
-    // Always ensure timestamp is treated as a number
     const timestampNumber = Number(timestamp);
-
-    // Convert from seconds to milliseconds for the Date constructor
     return new Date(timestampNumber * 1000).toLocaleString();
   };
 
@@ -116,15 +137,30 @@ const GMLeaderboard = () => {
                 <div className="badge badge-primary">{userEntry.receivedCount} messages received</div>
               </div>
 
+              <div className="flex items-center gap-2 mb-2">
+                <strong>Identity:</strong>
+                {userEntry.username && (
+                  <span className="flex items-center">
+                    <FaUser className="mr-1 text-primary" size={14} />
+                    {userEntry.username}
+                  </span>
+                )}
+                {userEntry.twitterUsername && (
+                  <span className="flex items-center text-blue-500">
+                    <FaTwitter className="mr-1" size={14} />@{userEntry.twitterUsername}
+                  </span>
+                )}
+                {userEntry.discordUsername && (
+                  <span className="flex items-center text-indigo-500">
+                    <FaDiscord className="mr-1" size={14} />
+                    {userEntry.discordUsername}
+                  </span>
+                )}
+              </div>
+
               <p>
                 <strong>Address:</strong> <Address address={userEntry.address} />
               </p>
-
-              {userEntry.username && (
-                <p>
-                  <strong>Username:</strong> {userEntry.username}
-                </p>
-              )}
 
               <div className="grid grid-cols-2 gap-4 mt-3">
                 <div className="bg-base-200 p-2 rounded-md">
@@ -154,19 +190,14 @@ const GMLeaderboard = () => {
               <div className="mt-3 pt-2 border-t border-base-300">
                 <p className="font-semibold flex justify-between">
                   <span>Total Score:</span>
-                  <span className="text-primary text-lg">{userEntry.count * 10 + userEntry.streak * 5}</span>
+                  <span className="text-primary text-lg">{calculateScore(userEntry)}</span>
                 </p>
+                <p className="text-xs opacity-70 mt-1">(GM Sent × 10) + (Streak × 5) + (GM Received × 2)</p>
               </div>
             </div>
           ) : (
             <div className="mt-2">
               <p className="opacity-70">You haven&apos;t said GM yet in this timeframe.</p>
-              {/* <button 
-                className="btn btn-primary btn-sm mt-2"
-                onClick={() => window.location.href = "/gm"}
-              >
-                Say GM Now
-              </button> */}
             </div>
           )}
         </div>
@@ -199,45 +230,84 @@ const GMLeaderboard = () => {
               {leaderboard
                 .map(entry => ({
                   ...entry,
-                  score: entry.count * 10 + entry.streak * 5 + entry.receivedCount * 2,
+                  score: calculateScore(entry),
                 }))
-                .sort((a, b) => b.score - a.score)
-                .map((entry, index) => (
-                  <tr
-                    key={entry.address}
-                    className={`hover ${userAddress && entry.address.toLowerCase() === userAddress.toLowerCase() ? "bg-primary bg-opacity-20" : ""}`}
-                  >
-                    <td className="text-center font-bold">
-                      {index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : `#${index + 1}`}
-                    </td>
-                    <td>
-                      <div className="flex flex-col">
-                        {entry.username && <span className="text-sm font-bold text-primary">{entry.username}</span>}
-                        <Address address={entry.address} />
-                        <div className="flex mt-1 space-x-1">
-                          {entry.discordUsername && (
-                            <span className="text-xs badge badge-outline text-indigo-500 border-indigo-300">
-                              Discord
-                            </span>
+                .slice((currentPage - 1) * entriesPerPage, currentPage * entriesPerPage)
+                .map((entry, index) => {
+                  const displayInfo = getDisplayName(entry);
+                  const actualIndex = (currentPage - 1) * entriesPerPage + index;
+
+                  return (
+                    <tr
+                      key={entry.address}
+                      className={`hover ${userAddress && entry.address.toLowerCase() === userAddress.toLowerCase() ? "bg-primary bg-opacity-20" : ""}`}
+                    >
+                      <td className="text-center font-bold">
+                        {actualIndex === 0
+                          ? "🥇"
+                          : actualIndex === 1
+                            ? "🥈"
+                            : actualIndex === 2
+                              ? "🥉"
+                              : `#${actualIndex + 1}`}
+                      </td>
+                      <td>
+                        <div className="flex flex-col">
+                          {displayInfo.name ? (
+                            <div className="flex items-center mb-1">
+                              {displayInfo.type === "twitter" && <FaTwitter size={14} className="mr-1 text-blue-500" />}
+                              {displayInfo.type === "discord" && (
+                                <FaDiscord size={14} className="mr-1 text-indigo-500" />
+                              )}
+                              {displayInfo.type === "username" && <FaUser size={14} className="mr-1 text-primary" />}
+                              <span
+                                className={`text-sm font-bold ${
+                                  displayInfo.type === "twitter"
+                                    ? "text-blue-500"
+                                    : displayInfo.type === "discord"
+                                      ? "text-indigo-500"
+                                      : "text-primary"
+                                }`}
+                              >
+                                {displayInfo.name}
+                              </span>
+                            </div>
+                          ) : (
+                            <Address address={entry.address} />
                           )}
-                          {entry.twitterUsername && (
-                            <span className="text-xs badge badge-outline text-blue-500 border-blue-300">Twitter</span>
+
+                          {/* Always show address in smaller text if we're showing a username */}
+                          {displayInfo.name && (
+                            <div className="text-xs opacity-70">
+                              <Address address={entry.address} />
+                            </div>
                           )}
+
+                          <div className="flex mt-1 space-x-1">
+                            {entry.discordUsername && !displayInfo.name && (
+                              <span className="text-xs badge badge-outline text-indigo-500 border-indigo-300">
+                                Discord
+                              </span>
+                            )}
+                            {entry.twitterUsername && !displayInfo.name && (
+                              <span className="text-xs badge badge-outline text-blue-500 border-blue-300">Twitter</span>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="text-center">{entry.count}</td>
-                    <td className="text-center">{entry.receivedCount}</td>
-                    <td className="text-center">
-                      <div className="flex items-center justify-center">
-                        <span className="font-mono">{entry.streak}</span>
-                        <span className="ml-1 text-orange-500">🔥</span>
-                      </div>
-                    </td>
-                    <td className="text-center">{formatTimestamp(entry.lastGM)}</td>
-                    <td className="text-center font-bold">{entry.score}</td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="text-center">{entry.count}</td>
+                      <td className="text-center">{entry.receivedCount}</td>
+                      <td className="text-center">
+                        <div className="flex items-center justify-center">
+                          <span className="font-mono">{entry.streak}</span>
+                          <span className="ml-1 text-orange-500">🔥</span>
+                        </div>
+                      </td>
+                      <td className="text-center">{formatTimestamp(entry.lastGM)}</td>
+                      <td className="text-center font-bold">{entry.score}</td>
+                    </tr>
+                  );
+                })}
             </tbody>
           </table>
         </div>
@@ -248,6 +318,68 @@ const GMLeaderboard = () => {
           <span className="font-bold">🛡️ Anti-Bot Protection:</span> Our system detects and filters out suspicious
           activity. Consistent daily greetings from verified accounts get higher scores.
         </p>
+        {/* <p className="mt-1 text-xs">
+          <span className="font-semibold">Scoring:</span> (GM Sent × 10) + (Streak × 5) + (GM Received × 2)
+        </p> */}
+      </div>
+
+      {/* Pagination Controls */}
+      {leaderboard.length > entriesPerPage && (
+        <div className="flex justify-center mt-6">
+          <div className="join">
+            <button
+              className="join-item btn btn-sm"
+              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+              disabled={currentPage === 1}
+            >
+              «
+            </button>
+
+            {/* Generate page buttons */}
+            {Array.from({ length: Math.min(5, Math.ceil(leaderboard.length / entriesPerPage)) }, (_, i) => {
+              // Show current page and nearby pages
+              let pageToShow;
+              const totalPages = Math.ceil(leaderboard.length / entriesPerPage);
+
+              if (totalPages <= 5) {
+                // If 5 or fewer pages, show all
+                pageToShow = i + 1;
+              } else if (currentPage <= 3) {
+                // If near start, show first 5 pages
+                pageToShow = i + 1;
+              } else if (currentPage >= totalPages - 2) {
+                // If near end, show last 5 pages
+                pageToShow = totalPages - 4 + i;
+              } else {
+                // Otherwise show 2 before and 2 after current page
+                pageToShow = currentPage - 2 + i;
+              }
+
+              return (
+                <button
+                  key={pageToShow}
+                  className={`join-item btn btn-sm ${currentPage === pageToShow ? "btn-active" : ""}`}
+                  onClick={() => setCurrentPage(pageToShow)}
+                >
+                  {pageToShow}
+                </button>
+              );
+            })}
+
+            <button
+              className="join-item btn btn-sm"
+              onClick={() => setCurrentPage(prev => Math.min(prev + 1, Math.ceil(leaderboard.length / entriesPerPage)))}
+              disabled={currentPage === Math.ceil(leaderboard.length / entriesPerPage)}
+            >
+              »
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="text-xs text-center mt-2 opacity-60">
+        Showing entries {Math.min((currentPage - 1) * entriesPerPage + 1, leaderboard.length)} -{" "}
+        {Math.min(currentPage * entriesPerPage, leaderboard.length)} of {leaderboard.length}
       </div>
     </div>
   );

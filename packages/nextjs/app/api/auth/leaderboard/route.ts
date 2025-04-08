@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
         },
       },
       { $sort: { count: -1 } },
-      { $limit: 50 },
+      { $limit: 100 },
     ]);
 
     if (!gmEvents.length) {
@@ -92,11 +92,29 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    // Fetch user profile data
-    const users = await User.find({ address: { $in: userAddresses } });
+    const normalizedAddresses = userAddresses.map(addr => (typeof addr === "string" ? addr.toLowerCase() : addr));
 
+    // Then modify the user query to use $in with a case-insensitive regex
+    const addressRegexes = normalizedAddresses.map(addr => new RegExp(`^${addr}$`, "i"));
+
+    // Fetch users with case-insensitive matching
+    const users = await User.find({
+      address: { $in: addressRegexes },
+    });
+
+    // Create a map using lowercase addresses
+    const userMap = new Map();
+    users.forEach(user => {
+      if (user.address) {
+        userMap.set(user.address.toLowerCase(), user);
+      }
+    });
+
+    // Then in your enrichment, ensure you're also using lowercase for lookups
     const enrichedEntries = entries.map(entry => {
-      const user = users.find(u => u.address.toLowerCase() === entry.address.toLowerCase());
+      const entryAddress = String(entry.address).toLowerCase();
+      const user = userMap.get(entryAddress);
+
       return {
         ...entry,
         username: user?.username || null,
