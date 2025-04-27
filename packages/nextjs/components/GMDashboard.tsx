@@ -4,11 +4,17 @@ import { useEffect, useState } from "react";
 import GMSearch from "./GMSearch";
 import axios from "axios";
 import { formatDistanceToNow } from "date-fns";
+import { ethers } from "ethers";
 import { FaTwitter } from "react-icons/fa";
 import { useAccount } from "wagmi";
-import { ArrowRightIcon, ClockIcon, SunIcon } from "@heroicons/react/24/outline";
+import { ArrowRightIcon, ClockIcon, ShieldCheckIcon, SunIcon } from "@heroicons/react/24/outline";
 import { useScaffoldReadContract, useScaffoldWriteContract } from "~~/hooks/scaffold-eth";
 import { notification } from "~~/utils/scaffold-eth";
+
+// Configurable constants
+const TWITTER_REQUIRED = false; // Make Twitter optional
+const GAS_LIMIT = 150000; // Reasonable gas limit
+const PRIVACY_VERSION = "1.0"; // For tracking privacy consents
 
 const GMDashboard = () => {
   const { address: connectedAddress } = useAccount();
@@ -21,6 +27,8 @@ const GMDashboard = () => {
   const [profileLoading, setProfileLoading] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [lastGmType, setLastGmType] = useState<"general" | "directed">("general");
+  const [privacyConsent, setPrivacyConsent] = useState<boolean>(false);
+  const [showPrivacyModal, setShowPrivacyModal] = useState<boolean>(false);
 
   // Get last GM timestamp
   const { data: lastGmTimestamp, refetch: refetchLastGm } = useScaffoldReadContract({
@@ -35,14 +43,43 @@ const GMDashboard = () => {
   // Setup contract write for directed GM
   const gmToWrite = useScaffoldWriteContract("DailyGM");
 
-  // Fetch user profile
+  // Check for existing privacy consent
+  useEffect(() => {
+    const storedConsent = localStorage.getItem("gmonad_privacy_consent");
+    const storedVersion = localStorage.getItem("gmonad_privacy_version");
+
+    if (storedConsent === "true" && storedVersion === PRIVACY_VERSION) {
+      setPrivacyConsent(true);
+    } else {
+      setShowPrivacyModal(true);
+    }
+  }, []);
+
+  // Handle privacy consent
+  const handlePrivacyConsent = (consent: boolean) => {
+    setPrivacyConsent(consent);
+    localStorage.setItem("gmonad_privacy_consent", consent.toString());
+    localStorage.setItem("gmonad_privacy_version", PRIVACY_VERSION);
+    setShowPrivacyModal(false);
+
+    if (!consent) {
+      // Clear any stored data if consent is denied
+      setUserProfile(null);
+    }
+  };
+
+  // Fetch user profile with privacy controls
   useEffect(() => {
     const fetchProfile = async () => {
-      if (!connectedAddress) return;
+      if (!connectedAddress || !privacyConsent) return;
 
       try {
         setProfileLoading(true);
-        const response = await axios.get(`/api/users/${connectedAddress}`);
+        const response = await axios.get(`/api/users/${connectedAddress}`, {
+          headers: {
+            "X-Privacy-Consent": "true", // Add consent header
+          },
+        });
         if (response.data.success) {
           setUserProfile(response.data.data);
         }
@@ -54,7 +91,7 @@ const GMDashboard = () => {
     };
 
     fetchProfile();
-  }, [connectedAddress]);
+  }, [connectedAddress, privacyConsent]);
 
   // Calculate when user can say GM again
   useEffect(() => {
@@ -83,14 +120,18 @@ const GMDashboard = () => {
   // Fetch recipient details when address changes
   useEffect(() => {
     const fetchRecipientDetails = async () => {
-      if (!recipientAddress) {
+      if (!recipientAddress || !privacyConsent) {
         setRecipientUsername("");
         setRecipientTwitter("");
         return;
       }
 
       try {
-        const response = await axios.get(`/api/users/${recipientAddress}`);
+        const response = await axios.get(`/api/users/${recipientAddress}`, {
+          headers: {
+            "X-Privacy-Consent": "true", // Add consent header
+          },
+        });
         if (response.data.success) {
           setRecipientUsername(response.data.data.username || "");
           setRecipientTwitter(response.data.data.twitterUsername || "");
@@ -106,14 +147,30 @@ const GMDashboard = () => {
     };
 
     fetchRecipientDetails();
-  }, [recipientAddress]);
+  }, [recipientAddress, privacyConsent]);
 
-  // Handle general GM button click
+  // Clear transaction parameters for clarity and security
+  const getTransactionParams = () => {
+    return {
+      gasLimit: ethers.toBigInt(GAS_LIMIT),
+      maxFeePerGas: undefined, // Let wallet decide
+      maxPriorityFeePerGas: undefined, // Let wallet decide
+    };
+  };
+
+  // Handle general GM button click with improved security
   const handleGmClick = async () => {
-    if (!userProfile?.twitterUsername) {
+    // Twitter check is now optional based on configuration
+    if (TWITTER_REQUIRED && !userProfile?.twitterUsername) {
       notification.error("You must connect your Twitter account before saying GM");
       return;
     }
+
+    // Show transaction confirmation info
+    notification.info(
+      "Please confirm the transaction in your wallet. This will send a GM message to everyone on the blockchain.",
+      { duration: 10000 },
+    );
 
     if (canSayGm) {
       try {
@@ -129,8 +186,9 @@ const GMDashboard = () => {
             },
             onError: error => {
               console.error("Error sending GM:", error);
-              notification.error("Failed to send GM");
+              notification.error("Transaction declined or failed");
             },
+            ...getTransactionParams(), // Add explicit transaction parameters
           },
         );
       } catch (error) {
@@ -139,14 +197,33 @@ const GMDashboard = () => {
     }
   };
 
-  // Handle directed GM button click
+  // Handle directed GM button click with improved security
   const handleGmToClick = async () => {
-    if (!userProfile?.twitterUsername) {
+    // Twitter check is now optional based on configuration
+    if (TWITTER_REQUIRED && !userProfile?.twitterUsername) {
       notification.error("You must connect your Twitter account before saying GM");
       return;
     }
 
-    if (canSayGm && recipientAddress && recipientAddress !== connectedAddress) {
+    if (!recipientAddress) {
+      notification.error("Please enter a recipient address");
+      return;
+    }
+
+    if (recipientAddress === connectedAddress) {
+      notification.error("You can't say GM to yourself!");
+      return;
+    }
+
+    // Show transaction confirmation info
+    notification.info(
+      `Please confirm the transaction in your wallet. This will send a GM message to ${
+        recipientUsername || recipientAddress
+      }.`,
+      { duration: 10000 },
+    );
+
+    if (canSayGm && recipientAddress) {
       try {
         await gmToWrite.writeContractAsync(
           {
@@ -161,17 +238,14 @@ const GMDashboard = () => {
             },
             onError: error => {
               console.error("Error sending GM to address:", error);
-              notification.error("Failed to send GM");
+              notification.error("Transaction declined or failed");
             },
+            ...getTransactionParams(), // Add explicit transaction parameters
           },
         );
       } catch (error) {
         console.error("Error sending GM to address:", error);
       }
-    } else if (recipientAddress === connectedAddress) {
-      notification.error("You can't say GM to yourself!");
-    } else if (!recipientAddress) {
-      notification.error("Please enter a recipient address");
     }
   };
 
@@ -180,19 +254,20 @@ const GMDashboard = () => {
     setRecipientAddress(address);
   };
 
-  // Share to Twitter
+  // Share to Twitter with configurable text
   const shareToTwitter = () => {
     let tweetText = "";
 
+    // More generic tweet text that doesn't hardcode Twitter handles
     if (lastGmType === "general") {
-      tweetText = `I just said GM to everyone on the Monad blockchain! @monad_xyz #GMonad`;
+      tweetText = `I just said GM to everyone on the Monad blockchain! #GMonad`;
     } else if (lastGmType === "directed") {
       if (recipientTwitter) {
-        tweetText = `I just said GM to @${recipientTwitter} on the Monad blockchain with the @daily_gmonad app! @monad_xyz #GMonad`;
+        tweetText = `I just said GM to @${recipientTwitter} on the Monad blockchain! #GMonad`;
       } else if (recipientUsername) {
-        tweetText = `I just said GM to ${recipientUsername} on the Monad blockchain with the @daily_gmonad app! @monad_xyz #GMonad`;
+        tweetText = `I just said GM to ${recipientUsername} on the Monad blockchain! #GMonad`;
       } else {
-        tweetText = `I just said GM to someone special on the Monad blockchain with the @daily_gmonad app! @monad_xyz #GMonad`;
+        tweetText = `I just said GM to a friend on the Monad blockchain! #GMonad`;
       }
     }
 
@@ -202,8 +277,44 @@ const GMDashboard = () => {
 
   const isLoading = gmWrite.isMining || gmToWrite.isMining;
 
+  // Check if user can say GM based on all conditions
+  const canSendGm = canSayGm && privacyConsent && (!TWITTER_REQUIRED || userProfile?.twitterUsername);
+
   return (
     <div className="mt-10 w-full max-w-4xl mx-auto">
+      {/* Privacy consent modal */}
+      {showPrivacyModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-6 max-w-md w-full">
+            <h2 className="text-xl font-bold mb-4 flex items-center">
+              <ShieldCheckIcon className="h-6 w-6 mr-2 text-primary" />
+              Privacy & Security Notice
+            </h2>
+            <div className="mb-4 text-sm">
+              <p className="mb-3">GMonad values your privacy and security. Please review how we use your data:</p>
+              <ul className="list-disc pl-5 mb-3 space-y-1 text-sm">
+                <li>We only store your wallet address and profile information you provide.</li>
+                <li>Social connections (Twitter, Discord) are optional and used only for displaying your identity.</li>
+                <li>Contract interactions are limited to the specific GM functions described.</li>
+                <li>No private keys or unnecessary permissions are ever requested.</li>
+              </ul>
+              <p>
+                By clicking &quot;Accept&quot;, you consent to this data usage. You can withdraw consent at any time by
+                disconnecting your wallet.
+              </p>
+            </div>
+            <div className="flex space-x-3 justify-end">
+              <button onClick={() => handlePrivacyConsent(false)} className="btn btn-outline btn-sm">
+                Decline
+              </button>
+              <button onClick={() => handlePrivacyConsent(true)} className="btn btn-primary btn-sm">
+                Accept
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {profileLoading ? (
         <div className="mb-6 bg-base-200 p-4 rounded-lg flex items-center justify-center">
           <span className="loading loading-spinner loading-sm mr-2"></span>
@@ -213,7 +324,7 @@ const GMDashboard = () => {
         <div className="mb-6 bg-yellow-100 text-yellow-800 p-4 rounded-lg flex items-center justify-center">
           <p>Please set up your profile to say GM</p>
         </div>
-      ) : !userProfile.twitterUsername ? (
+      ) : TWITTER_REQUIRED && !userProfile.twitterUsername ? (
         <div className="mb-6 bg-red-100 text-red-800 p-4 rounded-lg flex items-center justify-center">
           <p className="font-bold">You must connect your Twitter account before saying GM</p>
         </div>
@@ -223,6 +334,18 @@ const GMDashboard = () => {
           <p>{timeUntilNextGm}</p>
         </div>
       ) : null}
+
+      {/* Security information banner */}
+      <div className="mb-6 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 p-3 rounded-lg text-sm flex items-start">
+        <ShieldCheckIcon className="h-5 w-5 mr-2 flex-shrink-0 text-blue-500 dark:text-blue-400 mt-0.5" />
+        <div>
+          <p className="font-medium text-blue-800 dark:text-blue-300">Secure Transaction Information</p>
+          <p className="mt-1 text-blue-700 dark:text-blue-400 text-xs">
+            GMonad only requests blockchain transactions to record your GM messages. No signatures for personal data are
+            required. All transactions are transparent and can be verified on-chain.
+          </p>
+        </div>
+      </div>
 
       {showSuccess && (
         <div className="mb-6 bg-green-100 text-green-800 p-6 rounded-lg">
@@ -250,12 +373,14 @@ const GMDashboard = () => {
           <p className="mb-6 text-sm opacity-80 flex-grow">
             Send a general GM greeting to the blockchain. This will emit an event visible to everyone.
           </p>
+          <div className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+            <p>• Transaction cost: ~0.0001 MONAD</p>
+            <p>• Gas limit: {GAS_LIMIT}</p>
+          </div>
           <button
-            className={`btn btn-primary ${
-              !canSayGm || isLoading || !userProfile?.twitterUsername ? "btn-disabled" : ""
-            }`}
+            className={`btn btn-primary ${!canSendGm || isLoading ? "btn-disabled" : ""}`}
             onClick={handleGmClick}
-            disabled={!canSayGm || isLoading || !userProfile?.twitterUsername}
+            disabled={!canSendGm || isLoading}
           >
             {gmWrite.isMining ? <span className="loading loading-spinner loading-xs mr-2"></span> : null}
             Say GM to the World
@@ -290,12 +415,15 @@ const GMDashboard = () => {
             </div>
           )}
 
+          <div className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+            <p>• Transaction cost: ~0.0001 MONAD</p>
+            <p>• Gas limit: {GAS_LIMIT}</p>
+          </div>
+
           <button
-            className={`btn btn-secondary ${
-              !canSayGm || !recipientAddress || isLoading || !userProfile?.twitterUsername ? "btn-disabled" : ""
-            }`}
+            className={`btn btn-secondary ${!canSendGm || !recipientAddress || isLoading ? "btn-disabled" : ""}`}
             onClick={handleGmToClick}
-            disabled={!canSayGm || !recipientAddress || isLoading || !userProfile?.twitterUsername}
+            disabled={!canSendGm || !recipientAddress || isLoading}
           >
             {gmToWrite.isMining ? <span className="loading loading-spinner loading-xs mr-2"></span> : null}
             Say GM to This Address
