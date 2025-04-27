@@ -7396,6 +7396,21 @@ __metadata:
   languageName: node
   linkType: hard
 
+"ethers@npm:^6.13.7":
+  version: 6.13.7
+  resolution: "ethers@npm:6.13.7"
+  dependencies:
+    "@adraffy/ens-normalize": 1.10.1
+    "@noble/curves": 1.2.0
+    "@noble/hashes": 1.3.2
+    "@types/node": 22.7.5
+    aes-js: 4.0.0-beta.5
+    tslib: 2.7.0
+    ws: 8.17.1
+  checksum: 247810e6bb6a4637b0ec51491af9e2589cccb4577a7db691faa3ed8b4f06af7c19e4574885883facc074aa36a909ef9b2930cb3ecdf5803f1e3a08f2b6c510f8
+  languageName: node
+  linkType: hard
+
 "ethers@npm:~5.7.0":
   version: 5.7.2
   resolution: "ethers@npm:5.7.2"
@@ -12266,6 +12281,7 @@ __metadata:
     "@vercel/analytics": ^1.5.0
     axios: ^1.8.3
     date-fns: ^4.1.0
+    ethers: ^6.13.7
     husky: ^9.1.6
     lint-staged: ^15.2.10
     mongoose: ^8.12.1
